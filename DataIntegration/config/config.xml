@@ -1,0 +1,42 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<System>
+	<SourceDb>
+		<ip>127.0.0.1</ip>
+		<user>sa</user>
+		<passwd>Sa29632</passwd>
+		<dbName>STDB</dbName>
+	</SourceDb>
+	<DestDb>
+		<ip>127.0.0.1</ip>
+		<user>sa</user>
+		<passwd>Sa29632</passwd>
+		<dbName>NBHD</dbName>
+	</DestDb>
+	<NBSqDb>
+		<ip>127.0.0.1</ip>
+		<user>sa</user>
+		<passwd>Sa29632</passwd>
+		<dbName>STDB</dbName>
+	</NBSqDb>
+	<BackupDb>
+		<ip>10.19.73.23</ip>
+		<user>sa</user>
+		<passwd>NBhydro_sa</passwd>
+		<dbName>STDBBAK</dbName>
+	</BackupDb>
+	<AdminDb>
+		<ip>10.19.73.23</ip>
+		<user>sa</user>
+		<passwd>NBhydro_sa</passwd>
+		<dbName>NBHD</dbName>
+	</AdminDb>
+	<Config>
+		<pptnLastTime>2018/4/1 00:00:00</pptnLastTime>
+		<riverLastTime>2018/4/1 00:00:00</riverLastTime>
+		<rvsrLastTime>2018/4/1 00:00:00</rvsrLastTime>
+		<tideLastTime>2018/4/1 00:00:00</tideLastTime>
+		<interval>60</interval>
+		<dataItr>5</dataItr>
+		<recordRate>0.5</recordRate>
+	</Config>
+</System>

@@ -96,6 +96,7 @@
             this.bt_test.TabIndex = 3;
             this.bt_test.Text = "连接测试";
             this.bt_test.UseVisualStyleBackColor = true;
+            this.bt_test.Click += new System.EventHandler(this.bt_test_Click);
             // 
             // tb_userName
             // 

@@ -8,6 +8,7 @@ using System.Text;
 using System.Windows.Forms;
 using DataIntegration.xml;
 using DataIntegration.lib;
+using System.Data.SqlClient;
 
 namespace DataIntegration
 {
@@ -15,6 +16,7 @@ namespace DataIntegration
     {
         private string sourceName;
 
+        public event EventHandler DbConfigChanged;
 
         public string SourceName
         {
@@ -79,9 +81,42 @@ namespace DataIntegration
 
             TXML.SetDBConnfig(cfg, this.sourceName);
 
-            MessageBox.Show("请重新启动系统或重新启动服务，新的参数才能生效！");
+            //MessageBox.Show("请重新启动系统或重新启动服务，新的参数才能生效！");
+            DbConfigChanged?.Invoke(this, EventArgs.Empty);
 
             this.Close();
+        }
+
+        private void bt_test_Click(object sender, EventArgs e)
+        {
+            String ip = this.tb_ip.Text;
+            String dbName = this.tb_dbName.Text;
+            String userName = this.tb_userName.Text;
+            String passwd = this.tb_pswd.Text;
+
+            if (string.IsNullOrEmpty(ip) || string.IsNullOrEmpty(dbName) || string.IsNullOrEmpty(userName) || string.IsNullOrEmpty(passwd))
+            {
+                MessageBox.Show("请先完善信息！");
+                return;
+            }
+
+            string connStr = "server=" + ip + ";uid=" + userName + ";pwd=" + passwd + ";database=" + dbName;
+            using (IDbConnection conn = new SqlConnection(connStr))
+            {
+                try
+                {
+                    conn.Open();
+                    MessageBox.Show("连接成功！");
+                }
+                catch (Exception ex)
+                {
+                    Global.logMutex.WaitOne();
+                    Global.Log(connStr);
+                    Global.Log(ex.ToString());
+                    Global.logMutex.ReleaseMutex();
+                    MessageBox.Show("连接失败！ 出错信息：" + ex.ToString());
+                }
+            }
         }
     }
 

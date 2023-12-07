@@ -13,7 +13,7 @@ using DataIntegration.table;
 
 using System.Data.SqlClient;
 using System.Threading;
-
+using DataIntegration.table;
 using System.IO;
 
 
@@ -34,6 +34,13 @@ namespace DataIntegration
         private Dictionary<string, TRelation> stcds_river;  //Z  B
         private Dictionary<string, TRelation> stcds_rvsr;   //R  C 
         private Dictionary<string, TRelation> stcds_tide;   //T  D
+
+        /// 4个数据表传输对象
+        private StbprpTableTrans stbprpTableTrans;
+        private PptnTableTrans pptnTableTrans;
+        private RiverTableTrans riverTableTrans;
+        private RsvrTableTrans rsvrTableTrans;
+        private TideTableTrans tideTableTrans;
 
         //private Mutex runMutex;//     参数同步控制信号量， 用于线程启动、暂停、停止的信号变动
 
@@ -57,7 +64,7 @@ namespace DataIntegration
         public MainForm()
         {
             InitializeComponent();
-            this.systemCfg = TXML.GetSytemConfig("Config");
+            readDbConfig();
             //runMutex = new Mutex();
             Global.pptnLastTime = Convert.ToDateTime(this.systemCfg.PptnLastTime);    //初始化时间
             Global.riverLastTime = Convert.ToDateTime(this.systemCfg.RiverLastTime);    //初始化时间
@@ -73,6 +80,17 @@ namespace DataIntegration
             stcds_rvsr  = TRelationsManager.GetStcdList("C", "DestDb");
             stcds_tide  = TRelationsManager.GetStcdList("D", "DestDb");
             //------------------获取测站信息-------------------------
+
+            // 初始化数据传输对象
+            stbprpTableTrans = new StbprpTableTrans();
+            pptnTableTrans = new PptnTableTrans();
+            pptnTableTrans.transProgressEvent += PptnTableTrans_transProgressEvent;
+            riverTableTrans = new RiverTableTrans();
+            riverTableTrans.transProgressEvent += RiverTableTrans_transProgressEvent;
+            rsvrTableTrans = new RsvrTableTrans();
+            rsvrTableTrans.transProgressEvent += RsvrTableTrans_transProgressEvent;
+            tideTableTrans = new TideTableTrans();
+            tideTableTrans.transProgressEvent += TideTableTrans_transProgressEvent;
 
             run = true;
 
@@ -97,20 +115,49 @@ namespace DataIntegration
 
         }
 
+        private void TideTableTrans_transProgressEvent(object sender, EventArgs e)
+        {
+            TIDEProgressing();
+        }
+
+        private void RsvrTableTrans_transProgressEvent(object sender, EventArgs e)
+        {
+            RSVRProgressing();
+        }
+
+        private void RiverTableTrans_transProgressEvent(object sender, EventArgs e)
+        {
+            RIVERProgressing();
+        }
+
+        private void PptnTableTrans_transProgressEvent(object sender, EventArgs e)
+        {
+            PPTNProgressing();
+        }
 
         private void btnSourceSet_Click(object sender, EventArgs e)
         {
             DBSourceSetForm setForm = new DBSourceSetForm("SourceDb");
+            setForm.DbConfigChanged += SetForm_DbConfigChanged;
             setForm.ShowDialog();
         }
 
+        private void SetForm_DbConfigChanged(object sender, EventArgs e)
+        {
+            readDbConfig();
+        }
 
         private void btnDestSet_Click(object sender, EventArgs e)
         {
             DBSourceSetForm setForm = new DBSourceSetForm("DestDb");
+            setForm.DbConfigChanged += SetForm_DbConfigChanged;
             setForm.ShowDialog();
         }
 
+        private void readDbConfig()
+        {
+            this.systemCfg = TXML.GetSytemConfig("Config");
+        }
 
         /// <summary>
         /// 启动按钮
@@ -250,16 +297,17 @@ namespace DataIntegration
             this.cb_river.Enabled = false;
             this.cb_rvsr.Enabled = false;
             this.cb_tide.Enabled = false;
+                        
         }
 
 
         private void pptnRun()
         {
 
-            int ctls = 3;
+            int ctls = 0;
             while (run)
             {
-                //stcds_pptn = TRelationsManager.GetStcdList("A", "DestDb");  //多少个站，及每个站的关联信息和相关控制数据
+                stcds_pptn = TRelationsManager.GetStcdList("A", "DestDb"); // 每次重新取下站码，以同步relation表的修改
 
                 TConnect conn_s = new TConnect("SourceDb");
                 TConnect conn_d = new TConnect("DestDb");
@@ -290,44 +338,101 @@ namespace DataIntegration
                 DateTime timeA = Global.pptnLastTime;
                 DateTime timeB = timeA.AddHours(1);  //往后推一个小时
 
-                Boolean rec = PPTNIntegration(conn_s, conn_d, timeB);
+                //Boolean rec = PPTNIntegration(conn_s, conn_d, timeB);
+                DateTime lastDataTime = PptnDataTransform(conn_s, conn_d, timeA, timeB);
 
                 conn_s.CloseConn();  //关闭数据库
                 conn_d.CloseConn();
 
-                /*
-                DateTime overTime = DateTime.Now;  //一次同步结束时间 , 不一定是一个小时
-
-                TimeSpan ts = overTime.Subtract(startTime.AddMinutes(this.systemCfg.Interval));   //开始时间加一个小时与结束时间进行对比
-                //1个小时时间差
-                int span = ts.Days * 24 * 60 * 60 * 1000 + ts.Hours * 60 * 60 * 1000 + ts.Minutes * 60 * 1000 + ts.Seconds * 1000 + ts.Milliseconds;
-                //double span = ts.TotalMilliseconds;  //TotalMilliseconds 算出来的不是整数,这里需要整数
-                if (span < 0)
+                if (lastDataTime.AddHours(0.5) < timeB)
                 {
-                    LabPPTNMsg("降雨量数据同步： 休眠中.....");  
-                    Thread.Sleep(span*(-1));   //等待一小时剩余的时间
-                }
-                */
-
-                if (!rec) //同步数据量不足
-                {
-
-                    //如果同步数据量不足，休息一下
-                    LabPPTNMsg("降雨量数据同步： 休眠中....." + timeA.ToString());
-                    int span = 30 * 60 * 1000;   //等1小时
+                    LabPPTNMsg("降雨量数据同步： 休眠中....." + timeB.ToString());
+                    int span = 30 * 60 * 1000;   //等半个小时
                     Thread.Sleep(span);
-                    Global.pptnLastTime = timeA;    //上一次最后一条记录的时间
-                    ctls--;
-                    if (ctls == 0)
-                    {
-                        Global.pptnLastTime = timeB;    //上一次最后一条记录的时间
-                        ctls = 3;
-                    }
+                    ctls++;
                 }
-                else
+                if (timeB.AddHours(1) > DateTime.Now)
                 {
-                    Global.pptnLastTime = timeB;    //上一次最后一条记录的时间
+                    LabPPTNMsg("降雨量数据同步： 休眠中....." + timeB.ToString());
+                    while (timeB.AddHours(1) > DateTime.Now)
+                    {                        
+                        int span = 10 * 60 * 1000;   //等10分钟
+                        Thread.Sleep(span);
+                    }
+                    ctls++;
                 }
+
+                if (ctls == 1)
+                {
+                    // 把前1个小时的同步任务写入队列
+                    pptnTableTrans.InitTodoTransQueue(stcds_pptn.Keys.ToList<string>(), timeB.AddHours(-1), timeB, 3); // retry设置为3，这样任务只会执行一次
+                }
+
+                if (ctls == 3)
+                {
+                    // 把前3个小时的同步任务写入队列
+                    pptnTableTrans.InitTodoTransQueue(stcds_pptn.Keys.ToList<string>(), timeB.AddHours(-3), timeB, 3); // retry设置为3，这样任务只会执行一次
+                }
+
+                // 对前6个小时的数据再同步一次
+                if (ctls > 6)
+                {
+                    // 把前6个小时的同步任务写入队列
+                    pptnTableTrans.InitTodoTransQueue(stcds_pptn.Keys.ToList<string>(), timeB.AddHours(-6), timeB, 3); // retry设置为3，这样任务只会执行一次
+                    ctls = 0;
+                }
+
+                // 每同步到早上9点，对前24小时的数据再同步一次
+                if (timeB.Hour == 9)
+                {
+                    pptnTableTrans.InitTodoTransQueue(stcds_pptn.Keys.ToList<string>(), timeB.AddHours(-25), timeB.AddHours(-1), 3); // retry设置为3，这样任务只会执行一次
+
+                    // 同时每天把测站基本信息同步下
+                    TConnect conn_stbprp = new TConnect("NBSqDb");
+                    TConnect conn_des = new TConnect("DestDb");
+                    if (conn_stbprp.Conn.State ==ConnectionState.Open && conn_des.Conn.State == ConnectionState.Open)
+                    {
+                        StbprpDataTransform(conn_stbprp, conn_des);
+                    }
+                    conn_stbprp.CloseConn();
+                    conn_des.CloseConn();
+                }
+
+                Global.pptnLastTime = timeB;
+
+                ///*
+                //DateTime overTime = DateTime.Now;  //一次同步结束时间 , 不一定是一个小时
+
+                //TimeSpan ts = overTime.Subtract(startTime.AddMinutes(this.systemCfg.Interval));   //开始时间加一个小时与结束时间进行对比
+                ////1个小时时间差
+                //int span = ts.Days * 24 * 60 * 60 * 1000 + ts.Hours * 60 * 60 * 1000 + ts.Minutes * 60 * 1000 + ts.Seconds * 1000 + ts.Milliseconds;
+                ////double span = ts.TotalMilliseconds;  //TotalMilliseconds 算出来的不是整数,这里需要整数
+                //if (span < 0)
+                //{
+                //    LabPPTNMsg("降雨量数据同步： 休眠中.....");  
+                //    Thread.Sleep(span*(-1));   //等待一小时剩余的时间
+                //}
+                //*/
+
+                //if (!rec) //同步数据量不足
+                //{
+
+                //    //如果同步数据量不足，休息一下
+                //    LabPPTNMsg("降雨量数据同步： 休眠中....." + timeA.ToString());
+                //    int span = 30 * 60 * 1000;   //等1小时
+                //    Thread.Sleep(span);
+                //    Global.pptnLastTime = timeA;    //上一次最后一条记录的时间
+                //    ctls--;
+                //    if (ctls == 0)
+                //    {
+                //        Global.pptnLastTime = timeB;    //跳过这段1小时的数据
+                //        ctls = 3;
+                //    }
+                //}
+                //else
+                //{
+                //    Global.pptnLastTime = timeB;    //同步完，终点变起点
+                //}
 
                 //runMutex.WaitOne();
                 //TXML.SaveLastTimeOfSystemConfig("Config", "pptnLastTime", this.pptnLastTime.ToString());  //保存到配置文件中,中断后可以继续同步
@@ -338,9 +443,10 @@ namespace DataIntegration
 
         private void riverRun()
         {
-            int ctls = 3;
+            int ctls = 0;
             while (run)
             {
+                stcds_river = TRelationsManager.GetStcdList("B", "DestDb"); // 每次重新取下站码，以同步relation表的修改
 
                 TConnect conn_s = new TConnect("SourceDb");
                 TConnect conn_d = new TConnect("DestDb");
@@ -366,39 +472,59 @@ namespace DataIntegration
 
                 //timeA启动时间，往后推一个小时
                 DateTime timeA = Global.riverLastTime;
-                DateTime timeB = Global.riverLastTime.AddHours(1);  //一个小时应该有12个数据，如果不足12个数据，找另一个站码的数据
+                DateTime timeB = timeA.AddHours(1);  //一个小时应该有12个数据，如果不足12个数据，找另一个站码的数据
 
-                Boolean rec = RIVERIntegration(conn_s, conn_d, timeB);
+                DateTime lastDataTime = RiverDataTransform(conn_s, conn_d, timeA, timeB);
 
                 conn_s.CloseConn();  //关闭数据库
                 conn_d.CloseConn();
 
-
-                if (!rec) //同步数据量不足
+                if (lastDataTime.AddHours(0.5) < timeB)
                 {
-
-                    //如果同步数据量不足，休息一下
-                    LabRIVERMsg("河道水情数据同步： 休眠中....." + timeA.ToString());
-                    int span = 30 * 60 * 1000;   //等1小时
+                    LabRIVERMsg("河道水情数据同步： 休眠中....." + timeB.ToString());
+                    int span = 30 * 60 * 1000;   //等半个小时
                     Thread.Sleep(span);
-                    Global.riverLastTime = timeA;    //上一次最后一条记录的时间,重复一下
-                    ctls--;
-                    if (ctls == 0)
-                    {
-                        Global.pptnLastTime = timeB;    //上一次最后一条记录的时间
-                        ctls = 3;
-                    }
+                    ctls++;
                 }
-                else
+                if (timeB.AddHours(1) > DateTime.Now)
                 {
-                    Global.riverLastTime = timeB;    //上一次最后一条记录的时间
+                    LabRIVERMsg("河道水情数据同步： 休眠中....." + timeB.ToString());
+                    while (timeB.AddHours(1) > DateTime.Now)
+                    {
+                        int span = 10 * 60 * 1000;   //等10分钟
+                        Thread.Sleep(span);
+                    }
+                    ctls++;
                 }
 
-              
+                if (ctls == 1)
+                {
+                    // 把前1个小时的同步任务写入队列
+                    riverTableTrans.InitTodoTransQueue(stcds_river.Keys.ToList<string>(), timeB.AddHours(-1), timeB, 3); // retry设置为3，这样任务只会执行一次
+                }
 
-                //runMutex.WaitOne();
-                //TXML.SaveLastTimeOfSystemConfig("Config", "riverLastTime", this.riverLastTime.ToString());  //保存到配置文件中,中断后可以继续同步
-                //runMutex.ReleaseMutex();
+                if (ctls == 3)
+                {
+                    // 把前3个小时的同步任务写入队列
+                    riverTableTrans.InitTodoTransQueue(stcds_river.Keys.ToList<string>(), timeB.AddHours(-3), timeB, 3); // retry设置为3，这样任务只会执行一次
+                }
+
+                // 对前6个小时的数据再同步一次
+                if (ctls > 6)
+                {
+                    // 把前6个小时的同步任务写入队列
+                    riverTableTrans.InitTodoTransQueue(stcds_river.Keys.ToList<string>(), timeB.AddHours(-6), timeB, 3); // retry设置为3，这样任务只会执行一次
+                    ctls = 0;
+                }
+                
+
+                // 每同步到早上9点，对前24小时的数据再同步一次
+                if (timeB.Hour == 9)
+                {
+                    riverTableTrans.InitTodoTransQueue(stcds_river.Keys.ToList<string>(), timeB.AddHours(-25), timeB.AddHours(-1), 3); // retry设置为3，这样任务只会执行一次
+                }
+
+                Global.riverLastTime = timeB;
 
             }
         }
@@ -406,9 +532,10 @@ namespace DataIntegration
 
         private void rvsrRun()
         {
-            int ctls = 3;
+            int ctls = 0;
             while (run)
             {
+                stcds_rvsr = TRelationsManager.GetStcdList("C", "DestDb"); // 每次重新取下站码，以同步relation表的修改
 
                 TConnect conn_s = new TConnect("SourceDb");
                 TConnect conn_d = new TConnect("DestDb");
@@ -434,49 +561,70 @@ namespace DataIntegration
 
                 //timeA启动时间，往后推一个小时
                 DateTime timeA = Global.rvsrLastTime;
-                DateTime timeB = Global.rvsrLastTime.AddHours(1);  //一个小时应该有12个数据，如果不足12个数据，找另一个站码的数据
+                DateTime timeB = timeA.AddHours(1);  //一个小时应该有12个数据，如果不足12个数据，找另一个站码的数据
 
-                Boolean rec = RSVRIntegration(conn_s, conn_d, timeB);
+                DateTime lastDataTime = RsvrDataTransform(conn_s, conn_d, timeA, timeB);
 
                 conn_s.CloseConn();  //关闭数据库
                 conn_d.CloseConn();
 
 
-                if (!rec) //同步数据量不足
+                if (lastDataTime.AddHours(0.5) < timeB)
                 {
-
-                    //如果同步数据量不足，休息一下
-                    this.LabRSVRMsg("水库水情数据同步： 休眠中....." + timeA.ToString());
-                    int span = 30 * 60 * 1000;   //等1小时
+                    LabRSVRMsg("水库水情数据同步： 休眠中....." + timeB.ToString());
+                    int span = 30 * 60 * 1000;
                     Thread.Sleep(span);
-                    Global.rvsrLastTime = timeA;    //上一次最后一条记录的时间,重复一下
-                    ctls--;
-                    if (ctls == 0)
-                    {
-                        Global.pptnLastTime = timeB;    //上一次最后一条记录的时间
-                        ctls = 3;
-                    }
+                    ctls++;
                 }
-                else
+                if (timeB.AddHours(1) > DateTime.Now)
                 {
-                    Global.rvsrLastTime = timeB;    //上一次最后一条记录的时间
+                    LabRSVRMsg("水库水情数据同步： 休眠中....." + timeB.ToString());
+                    while (timeB.AddHours(1) > DateTime.Now)
+                    {
+                        int span = 10 * 60 * 1000;   //等10分钟
+                        Thread.Sleep(span);
+                    }
+                    ctls++;
                 }
 
+                if (ctls == 1)
+                {
+                    // 把前1个小时的同步任务写入队列
+                    rsvrTableTrans.InitTodoTransQueue(stcds_rvsr.Keys.ToList<string>(), timeB.AddHours(-1), timeB, 3); // retry设置为3，这样任务只会执行一次
+                }
 
-                //runMutex.WaitOne();
-                //TXML.SaveLastTimeOfSystemConfig("Config", "rvsrLastTime", this.rvsrLastTime.ToString());  //保存到配置文件中,中断后可以继续同步
-                //runMutex.ReleaseMutex();
+                if (ctls == 3)
+                {
+                    // 把前3个小时的同步任务写入队列
+                    rsvrTableTrans.InitTodoTransQueue(stcds_rvsr.Keys.ToList<string>(), timeB.AddHours(-3), timeB, 3); // retry设置为3，这样任务只会执行一次
+                }
 
+                // 对前6个小时的数据再同步一次
+                if (ctls > 6)
+                {
+                    // 把前6个小时的同步任务写入队列
+                    rsvrTableTrans.InitTodoTransQueue(stcds_rvsr.Keys.ToList<string>(), timeB.AddHours(-6), timeB, 3); // retry设置为3，这样任务只会执行一次
+                    ctls = 0;
+                }
+
+                // 每同步到早上9点，对前24小时的数据再同步一次
+                if (timeB.Hour == 9)
+                {
+                    rsvrTableTrans.InitTodoTransQueue(stcds_rvsr.Keys.ToList<string>(), timeB.AddHours(-25), timeB.AddHours(-1), 3); // retry设置为3，这样任务只会执行一次
+                }
+
+                Global.rvsrLastTime = timeB;    //上一次最后一条记录的时间
+               
             }
         }
 
 
         private void tideRun()
         {
-            int ctls = 3;
+            int ctls = 0;
             while (run)
             {
-                //stcds_tide = TRelationsManager.GetStcdList("D", "DestDb");
+                stcds_tide = TRelationsManager.GetStcdList("D", "DestDb"); // 每次重新取下站码，以同步relation表的修改
 
                 TConnect conn_s = new TConnect("SourceDb");
                 TConnect conn_d = new TConnect("DestDb");
@@ -504,31 +652,59 @@ namespace DataIntegration
                 DateTime timeA = Global.tideLastTime;
                 DateTime timeB = Global.tideLastTime.AddHours(1);  //一个小时应该有12个数据，如果不足12个数据，找另一个站码的数据
 
-                Boolean rec = TIDEIntegration(conn_s, conn_d, timeB);
+                DateTime lastDataTime = TideDataTransform(conn_s, conn_d, timeA, timeB);
 
                 conn_s.CloseConn();  //关闭数据库
                 conn_d.CloseConn();
 
-
-                if (!rec) //同步数据量不足
+                // 如果最新的数据时间比结束时间timeB晚半个小时，表示本轮数据不全，则应等下一次同步重试
+                if (lastDataTime.AddHours(0.5) < timeB)
                 {
-
-                    //如果同步数据量不足，休息一下
-                    this.LabTIDEMsg("潮位数据同步： 休眠中....." + timeA.ToString());
-                    int span = 30 * 60 * 1000;   //等1小时
+                    LabTIDEMsg("潮位数据同步： 休眠中....." + timeB.ToString());
+                    int span = 30 * 60 * 1000;   //等半个小时
                     Thread.Sleep(span);
-                    Global.tideLastTime = timeA;    //上一次最后一条记录的时间,重复一下
-                    ctls--;
-                    if (ctls == 0)
-                    {
-                        Global.pptnLastTime = timeB;    //上一次最后一条记录的时间
-                        ctls = 3;
-                    }
+                    ctls++;
                 }
-                else
+                if (timeB.AddHours(1) > DateTime.Now)
                 {
-                    Global.tideLastTime = timeB;    //上一次最后一条记录的时间
+                    LabTIDEMsg("潮位数据同步： 休眠中....." + timeB.ToString());
+                    while (timeB.AddHours(1) > DateTime.Now)
+                    {
+                        int span = 10 * 60 * 1000;   //等10分钟
+                        Thread.Sleep(span);
+                    }
+                    ctls++;
                 }
+
+                if (ctls == 1)
+                {
+                    // 把前1个小时的同步任务写入队列
+                    tideTableTrans.InitTodoTransQueue(stcds_tide.Keys.ToList<string>(), timeB.AddHours(-1), timeB, 3); // retry设置为3，这样任务只会执行一次
+                }
+
+                if (ctls == 3)
+                {
+                    // 把前3个小时的同步任务写入队列
+                    tideTableTrans.InitTodoTransQueue(stcds_tide.Keys.ToList<string>(), timeB.AddHours(-3), timeB, 3); // retry设置为3，这样任务只会执行一次
+                }
+
+                // 对前6个小时的数据再同步一次
+                if (ctls > 6)
+                {
+                    // 把前6个小时的同步任务写入队列
+                    tideTableTrans.InitTodoTransQueue(stcds_tide.Keys.ToList<string>(), timeB.AddHours(-6), timeB, 3); // retry设置为3，这样任务只会执行一次
+                    ctls = 0;
+                }
+
+                
+                // 每同步到早上9点，对前24小时的数据再同步一次
+                if (timeB.Hour == 9)
+                {
+                    tideTableTrans.InitTodoTransQueue(stcds_tide.Keys.ToList<string>(), timeB.AddHours(-25), timeB.AddHours(-1), 3); // retry设置为3，这样任务只会执行一次
+                }
+
+                Global.tideLastTime = timeB;    //上一次最后一条记录的时间
+                
                 //runMutex.WaitOne();
                 //TXML.SaveLastTimeOfSystemConfig("Config", "tideLastTime", this.tideLastTime.ToString());  //保存到配置文件中,中断后可以继续同步
                 //runMutex.ReleaseMutex();
@@ -558,9 +734,114 @@ namespace DataIntegration
             return max;
         }
 
+        private bool StbprpDataTransform(TConnect conn_s, TConnect conn_d)
+        {
+            LabStbprpMsg("测站基本信息同步中...... " + DateTime.Now.ToString());
 
+            bool result = false;
+            try
+            {
+                result = stbprpTableTrans.ExecTableTrans(conn_s, conn_d);
+            }
+            catch (Exception e)
+            {
+                Global.logMutex.WaitOne();
+                Global.Log(e.ToString());
+                Global.logMutex.ReleaseMutex();
+            }
 
-        
+            if (result)
+            {
+                LabStbprpMsg("测站基本信息同步完成。 " + DateTime.Now.ToString());
+            }
+            else
+            {
+                LabStbprpMsg("测站基本信息同步失败！" + DateTime.Now.ToString());
+            }
+
+            return result;
+        }
+
+        private DateTime PptnDataTransform(TConnect conn_s, TConnect conn_d, DateTime beginTM, DateTime endTM)
+        {
+            LabPPTNMsg("雨量数据同步中...... " + endTM.ToString());
+            DisplayPPTNProgress(true, this.stcds_pptn.Count);  //需要同步雨量的站数
+
+            DateTime result = DateTime.MinValue;
+            try
+            {
+                result = pptnTableTrans.ExecTableTrans(this.stcds_pptn.Keys.ToList<string>(), beginTM, endTM, conn_s, conn_d);
+            }
+            catch (Exception e)
+            {
+                Global.logMutex.WaitOne();
+                Global.Log(e.ToString());
+                Global.logMutex.ReleaseMutex();
+            }
+
+            return result;
+        }
+
+        private DateTime RiverDataTransform(TConnect conn_s, TConnect conn_d, DateTime beginTM, DateTime endTM)
+        {
+            LabRIVERMsg("河道水情数据同步中...... " + endTM.ToString());
+            DisplayRIVERProgress(true, this.stcds_river.Count);  //需要同步雨量的站数
+
+            DateTime result = DateTime.MinValue;
+            try
+            {
+                result = riverTableTrans.ExecTableTrans(this.stcds_river.Keys.ToList<string>(), beginTM, endTM, conn_s, conn_d);
+            }
+            catch (Exception e)
+            {
+                Global.logMutex.WaitOne();
+                Global.Log(e.ToString());
+                Global.logMutex.ReleaseMutex();
+            }
+
+            return result;
+        }
+
+        private DateTime RsvrDataTransform(TConnect conn_s, TConnect conn_d, DateTime beginTM, DateTime endTM)
+        {
+            LabRSVRMsg("水库水情数据同步中...... " + endTM.ToString());
+            DisplayRSVRProgress(true, this.stcds_rvsr.Count);  //需要同步雨量的站数
+
+            DateTime result = DateTime.MinValue;
+            try
+            {
+                result = rsvrTableTrans.ExecTableTrans(this.stcds_rvsr.Keys.ToList<string>(), beginTM, endTM, conn_s, conn_d);
+            }
+            catch (Exception e)
+            {
+                Global.logMutex.WaitOne();
+                Global.Log(e.ToString());
+                Global.logMutex.ReleaseMutex();
+            }
+
+            return result;
+        }
+
+        private DateTime TideDataTransform(TConnect conn_s, TConnect conn_d, DateTime beginTM, DateTime endTM)
+        {
+            LabTIDEMsg("潮位数据同步中...... " + endTM.ToString());
+            DisplayTIDEProgress(true, this.stcds_tide.Count);  //需要同步雨量的站数
+
+            DateTime result = DateTime.MinValue;
+            try
+            {
+                result = tideTableTrans.ExecTableTrans(this.stcds_tide.Keys.ToList<string>(), beginTM, endTM, conn_s, conn_d);
+            }
+            catch (Exception e)
+            {
+                Global.logMutex.WaitOne();
+                Global.Log(e.ToString());
+                Global.logMutex.ReleaseMutex();
+            }
+
+            return result;
+        }
+
         /// <summary>
         /// 降雨量数据同步
         /// </summary>
@@ -1338,6 +1619,25 @@ namespace DataIntegration
         }
         //==================================================
         /// <summary>
+        /// 测站基本信息提示
+        /// </summary>
+        /// <param name="enable"></param>
+        private delegate void LabStbprpMsgControl(string msg);
+        private void LabStbprpMsg(string msg)
+        {
+            if (this.lbl_stbprp_trans.InvokeRequired)
+            {
+                LabStbprpMsgControl c = new LabStbprpMsgControl(LabStbprpMsg);
+                this.Invoke(c, new object[] { msg });
+            }
+            else
+            {
+                this.lbl_stbprp_trans.Text = msg;
+            }
+        }
+
+        //==================================================
+        /// <summary>
         /// 雨量信息提示
         /// </summary>
         /// <param name="enable"></param>
@@ -1753,6 +2053,7 @@ namespace DataIntegration
         private void btnBackupSet_Click(object sender, EventArgs e)
         {
             DBSourceSetForm setForm = new DBSourceSetForm("BackupDb");
+            setForm.DbConfigChanged += SetForm_DbConfigChanged;
             setForm.ShowDialog();
         }
 

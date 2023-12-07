@@ -19,7 +19,9 @@ namespace DataIntegration.util
         {
             Dictionary<string, TRelation> stcdList = null;
             TConnect conn = new TConnect(connName);
-            string sql = "select stcd, gprscd, wavecd, hiszcd, hispcd, hisrcd, conncd, FORUMULA from HD_RELATION_A where sttp like '%"+ch+"%'"; //从0开始数
+            string sql = "select newcd as stcd, '' as gprscd, '' as wavecd, hiszcd, hispcd, hisrcd, '' as conncd, FORUMULA from HD_RELATION_A " +
+                " UNPIVOT (newcd for cd in (GPRSCD, WAVECD, CONNCD)) as unpi where len(newcd) > 0 and sttp like '%" + ch + "%'";
+            //string sql = "select stcd, gprscd, wavecd, hiszcd, hispcd, hisrcd, conncd, FORUMULA from HD_RELATION_A where sttp like '%"+ch+"%'"; //从0开始数
             try
             {
                 SqlDataReader dr = conn.ExecuteReader(sql);

@@ -54,6 +54,7 @@
             this.lab_ytoy = new System.Windows.Forms.Label();
             this.cb_export = new System.Windows.Forms.CheckBox();
             this.btn_test = new System.Windows.Forms.Button();
+            this.lbl_stbprp_trans = new System.Windows.Forms.Label();
             this.SuspendLayout();
             // 
             // progressPPTN
@@ -149,7 +150,6 @@
             this.btnSystemSet.TabIndex = 8;
             this.btnSystemSet.Text = "系统参数设置";
             this.btnSystemSet.UseVisualStyleBackColor = true;
-            this.btnSystemSet.Click += new System.EventHandler(this.btnSystemSet_Click);
             // 
             // btnStart
             // 
@@ -289,11 +289,20 @@
             this.btn_test.UseVisualStyleBackColor = true;
             this.btn_test.Click += new System.EventHandler(this.btn_test_Click);
             // 
+            // lbl_stbprp_trans
+            // 
+            this.lbl_stbprp_trans.AutoSize = true;
+            this.lbl_stbprp_trans.Location = new System.Drawing.Point(491, 201);
+            this.lbl_stbprp_trans.Name = "lbl_stbprp_trans";
+            this.lbl_stbprp_trans.Size = new System.Drawing.Size(0, 12);
+            this.lbl_stbprp_trans.TabIndex = 20;
+            // 
             // MainForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(775, 396);
+            this.Controls.Add(this.lbl_stbprp_trans);
             this.Controls.Add(this.btn_test);
             this.Controls.Add(this.cb_export);
             this.Controls.Add(this.lab_ytoy);
@@ -357,6 +366,7 @@
         private System.Windows.Forms.Label lab_ytoy;
         private System.Windows.Forms.CheckBox cb_export;
         private System.Windows.Forms.Button btn_test;
+        private System.Windows.Forms.Label lbl_stbprp_trans;
     }
 }
 

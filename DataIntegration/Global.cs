@@ -9,7 +9,7 @@ using System.Threading;
 
 namespace DataIntegration
 {
-    class Global
+    public class Global
     {
         public static Mutex logMutex;
 

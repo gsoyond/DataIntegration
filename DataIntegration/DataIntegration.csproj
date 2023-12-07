@@ -63,7 +63,13 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="table\TPPTNTable.cs" />
+    <Compile Include="table\StbprpTableTrans.cs" />
+    <Compile Include="table\TideTableTrans.cs" />
+    <Compile Include="table\RsvrTableTrans.cs" />
+    <Compile Include="table\RiverTableTrans.cs" />
+    <Compile Include="table\PptnTableTrans.cs" />
+    <Compile Include="util\DataBulkCopy.cs" />
+    <Compile Include="util\TransObject.cs" />
     <Compile Include="util\TRelation.cs" />
     <Compile Include="util\TRelationsManager.cs" />
     <Compile Include="util\TSystemConfig.cs" />
@@ -92,6 +98,14 @@
       <DependentUpon>Settings.settings</DependentUpon>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="config\config.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="log\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

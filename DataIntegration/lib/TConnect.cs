@@ -10,7 +10,7 @@ using DataIntegration.xml;
 
 namespace DataIntegration.lib
 {
-    class TConnect
+    public class TConnect
     {
         private SqlConnection conn;
         //private TConnectConfig config;
@@ -51,11 +51,15 @@ namespace DataIntegration.lib
             }
         }
 
-        public int ExecuteQuery(string sql)
+        public int ExecuteQuery(string sql , SqlTransaction trans = null)
         {
             try
             {
                 SqlCommand cmd = new SqlCommand(sql, this.conn);
+                if (trans != null)
+                {
+                    cmd.Transaction = trans;
+                }
                 return cmd.ExecuteNonQuery();
             }
             catch (Exception e)
